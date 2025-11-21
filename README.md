@@ -35,7 +35,10 @@ Deploy to AWS Elastic Beanstalk
 4. Verify health check and open `GET /lessons` public URL; use this URL in the frontend `API_BASE`.
 
 Postman
-Use `Postman_collection.json` in this folder; set `baseUrl` to your EB URL.
+Use `Postman_collection.json` in this folder; set `baseUrl` to your Render or AWS EB URL.
+
+Testing
+All routes can be tested using the Postman collection. Ensure your MongoDB Atlas network access allows connections from your Render/AWS IP addresses.
 
 
 
