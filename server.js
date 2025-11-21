@@ -51,18 +51,64 @@ app.get('/images/:fileName', (req, res) => {
 let db, lessons, orders, client;
 
 async function initDb() {
-	const tlsInsecure = String(process.env.TLS_INSECURE || '').toLowerCase() === 'true';
-	client = new MongoClient(MONGO_URI, tlsInsecure ? { tlsAllowInvalidCertificates: true } : undefined);
-	await client.connect();
-	db = client.db(DB_NAME);
-	lessons = db.collection('lesson');
-	orders = db.collection('order');
-	console.log(`Connected to MongoDB database: ${DB_NAME}`);
+	try {
+		const tlsInsecure = String(process.env.TLS_INSECURE || '').toLowerCase() === 'true';
+		client = new MongoClient(MONGO_URI, tlsInsecure ? { tlsAllowInvalidCertificates: true } : undefined);
+		
+		console.log('Attempting to connect to MongoDB...');
+		await client.connect();
+		
+		// Test the connection
+		await client.db('admin').admin().ping();
+		
+		db = client.db(DB_NAME);
+		lessons = db.collection('lesson');
+		orders = db.collection('order');
+		
+		// Get connection info
+		const serverInfo = await client.db('admin').admin().serverStatus();
+		
+		console.log(`✅ Connected to MongoDB successfully!`);
+		console.log(`   Database: ${DB_NAME}`);
+		console.log(`   Host: ${client.options.hosts[0]}`);
+		console.log(`   MongoDB Version: ${serverInfo.version}`);
+		
+		// Test collections
+		const lessonCount = await lessons.countDocuments();
+		const orderCount = await orders.countDocuments();
+		console.log(`   Collections: lessons (${lessonCount} docs), orders (${orderCount} docs)`);
+		
+	} catch (error) {
+		console.error('❌ Failed to connect to MongoDB:', error.message);
+		throw error;
+	}
 }
 
 // Routes
 app.get('/health', (req, res) => {
 	res.json({ ok: true });
+});
+
+// Database health check
+app.get('/health/db', async (req, res) => {
+	try {
+		// Test database connection by pinging
+		await db.admin().ping();
+		res.json({ 
+			status: 'connected', 
+			database: DB_NAME,
+			collections: {
+				lessons: await lessons.countDocuments(),
+				orders: await orders.countDocuments()
+			}
+		});
+	} catch (err) {
+		console.error('Database health check failed:', err);
+		res.status(500).json({ 
+			status: 'disconnected', 
+			error: err.message 
+		});
+	}
 });
 
 // Get all lessons
@@ -139,7 +185,7 @@ app.put('/lessons/:id', async (req, res) => {
 	try {
 		const id = req.params.id;
 		let oid;
-		try { oid = new ObjectId(id); } catch (e) { return res.status(400).json({ error: 'Invalid id' }); }
+		try { oid = new ObjectId(id); } catch (e) { console.log('PUT /lessons invalid id:', id); return res.status(400).json({ error: 'Invalid id' }); }
 		const allowed = ['subject', 'location', 'price', 'spaces', 'image'];
 		const set = {};
 		for (const k of allowed) {
@@ -148,11 +194,20 @@ app.put('/lessons/:id', async (req, res) => {
 			}
 		}
 		if (Object.keys(set).length === 0) {
+			console.log('PUT /lessons no fields to update for id:', id);
 			return res.status(400).json({ error: 'No valid fields to update' });
 		}
-		const result = await lessons.findOneAndUpdate({ _id: oid }, { $set: set }, { returnDocument: 'after' });
-		if (!result || !result.value) return res.status(404).json({ error: 'Lesson not found' });
-		res.json(result.value);
+		let result = await lessons.findOneAndUpdate({ _id: oid }, { $set: set }, { returnDocument: 'after' });
+		if (!result || !result.value) {
+			// Fallback in case _id was stored as string for any reason
+			console.log('PUT /lessons not found by ObjectId, trying string match for id:', id);
+			result = await lessons.findOneAndUpdate({ _id: id }, { $set: set }, { returnDocument: 'after' });
+		}
+		if (!result || !result.value) {
+			console.log('PUT /lessons still not found for id:', id);
+			return res.status(404).json({ error: 'Lesson not found' });
+		}
+		return res.json(result.value);
 	} catch (err) {
 		console.error(err);
 		res.status(500).json({ error: 'Failed to update lesson' });
