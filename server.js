@@ -20,8 +20,8 @@ if (!MONGO_URI) {
 const app = express();
 
 // Middlewares
-app.use(cors());
-app.use(express.json());
+app.use(cors()); // Enable CORS for frontend access
+app.use(express.json()); // Parse JSON request bodies
 
 // Logger middleware (custom)
 app.use((req, res, next) => {
