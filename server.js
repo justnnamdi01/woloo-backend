@@ -164,7 +164,12 @@ app.post('/orders', async (req, res) => {
 		}
 		// Basic validation of item structure
 		for (const it of items) {
-			if (!it.lessonId || Number.isNaN(ObjectId.createFromHexString(it.lessonId))) {
+			if (!it.lessonId) {
+				return res.status(400).json({ error: 'Invalid lessonId' });
+			}
+			try {
+				new ObjectId(it.lessonId);
+			} catch (e) {
 				return res.status(400).json({ error: 'Invalid lessonId' });
 			}
 			if (!Number.isInteger(it.quantity) || it.quantity <= 0) {
